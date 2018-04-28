@@ -37,47 +37,50 @@ def get_file_data(fpath, ftype=None):
 def format_date(buf):
     if not buf:
         return None
-    cldate = buf.strip().split(' ')
-    cldlen = len(cldate[0])
-    # print("cldate0: ", cldate[0])
-    # print("cldate1: ", cldate[1])
-    print("cld_len: ", cldlen)
-
-    if cldlen > 6:
-        print("normal date: ", cldate)
+    buff = buf.strip()
+    blen = len(buff)                # python2 python3 is different
+    # print("cld_len: ", blen)
+    if blen > 12:
+        cldate = buff.split(' ')
         restr = r'(\d{4}).*?(\d{1,2}).*?(\d{1,2})'
         value = re.findall(restr, cldate[0], re.S | re.M)
         realdate = '-'.join(value[0]) + ' ' + cldate[1]
     else:
-        print("not normal date: ", cldate)
+    # Actually: blen = 11
+        # print("not normal date: ", buff)
+        date_tail = buff[-5:]
         tstrp_today = time.localtime(time.time())
         ymd = time.strftime('%Y-%m-%d', tstrp_today).split('-')
-        if '昨' in cldate[0]:
+        if '昨' in buff:
             day = int(ymd[-1]) -1
-            realdate = str(ymd[0]) + '-' + str(ymd[1]) + '-' + str(day) + ' '+ cldate[1]
-        elif '前' in cldate[0]:
+            realdate = str(ymd[0]) + '-' + str(ymd[1]) + '-' + str(day) + ' '+ date_tail
+        elif '前' in buff:
             day = int(ymd[-1]) -2
-            realdate = str(ymd[0]) + '-' + str(ymd[1]) + '-' + str(day) + ' '+ cldate[1]
-    print("realdate: ", realdate)
-    try: 
+            realdate = str(ymd[0]) + '-' + str(ymd[1]) + '-' + str(day) + ' '+ date_tail
+        else:
+            realdate = time.strftime('%Y-%m-%d', tstrp_today) + ' ' + "00:00"
+        # print("realdate: ", realdate)
+    try:
         # 2018-04-26 10:01
         timestrp = time.strptime(realdate, "%Y-%m-%d %H:%M")
         time_stamp = int(time.mktime(timestrp))
     except Exception as e:
         print(e)
         time_stamp = int(time.time())
-    print(time_stamp)
+    return time_stamp
+
 
 def test_format_date():
     buf = '  2018年04月26日 10:01'
     # buf = '  2018年4月26日 10:01 '
-    # buf = '  昨天 10:01 '
+    # buf = '  昨天10:01 '
     ftime =  format_date(buf)
 
 
 class BaiduTieba(object):
-    def __init__(self, username, dpath):
+    def __init__(self, username, dpath, debug=1):
         self.user   =  username
+        self.debug  = debug
         self.fpath  = self._get_path(dpath)
         self.header = self._get_header()
         self.mySession = requests.session()
@@ -106,21 +109,24 @@ class BaiduTieba(object):
         return mypath
 
     def _save_data(self, buf, fname, ftype=None):
-        try:
-            fullpath = os.path.join(self.fpath, fname)
-            path = os.path.split(fullpath)[0]
-            if not os.path.exists(path):
-                os.makedirs(path)
-            if ftype == 'json':
-                with open(fullpath, 'w') as fjp:
-                    json.dump(buf, fjp)
-            else:
-                with open(fullpath, 'w') as fp:
-                    fp.write(buf.encode('gbk', 'ignore'))
-            return True
-        except Exception as e:
-            print(e)
-            return False
+        if self.debug:
+            try:
+                fullpath = os.path.join(self.fpath, fname)
+                path = os.path.split(fullpath)[0]
+                if not os.path.exists(path):
+                    os.makedirs(path)
+                if ftype == 'json':
+                    with open(fullpath, 'w') as fjp:
+                        json.dump(buf, fjp)
+                else:
+                    with open(fullpath, 'w') as fp:
+                        fp.write(buf.encode('utf-8', 'ignore'))
+                return True
+            except Exception as e:
+                # print(e)
+                return False
+        else:
+            pass
 
     def _my_request(self, url):
         try:
@@ -240,7 +246,7 @@ class BaiduTieba(object):
             feed['feed_from']  = feed_item.xpath('.//div/a[@class="feed-from"]/text()')[0].encode('raw_unicode_escape')
             feed_time          = feed_item.xpath('.//span[@class="datetime"]/text()')[0].encode('raw_unicode_escape')
             feed['feed_time']  = format_date(feed_time)
-            feed['spid_time']  = time.time()
+            feed['spid_time']  = int(time.time())
             if feed['feed_href']:
                 print(feed['feed_href'])
                 resp = self._my_request(feed['feed_href'])
@@ -268,7 +274,7 @@ class BaiduTieba(object):
             feed['feed_from']  = body.xpath('.//div[@class="quoted clearfix"]//a[@class="feed-from"]/text()')[0].encode('raw_unicode_escape')
             feed_time          = feed_item.xpath('.//span[@class="datetime"]/text()')[0].encode('raw_unicode_escape')
             feed['feed_time']  = format_date(feed_time)
-            feed['spid_time']  = time.time()
+            feed['spid_time']  = int(time.time())
             feeds.append(feed)
         return feeds
 
