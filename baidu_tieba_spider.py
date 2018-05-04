@@ -3,35 +3,24 @@
     @File    baidut tieba
     @Author  tx
     @Created On 2018-04-26
-    @Updated On 2018-04-27
+    @Updated On 2018-05-02
 '''
 import os
 import re
 import sys
 import time
 import json
-# import chardet
 import pprint
 import requests
 from lxml import etree
 from bs4 import BeautifulSoup as bs
 from multiprocessing.dummy import Pool
 pwd = os.path.dirname(os.path.realpath(__file__))           #pwd2 = sys.path[0]
-# pardir = os.path.abspath(os.path.join(pwd, os.pardir))
-
-
-def get_file_data(fpath, ftype=None):
-    try:
-        if ftype == 'json':
-            with open(fpath, 'r') as fjp:
-                buf = json.load(fjp)
-        else:
-            with open(fpath, 'r') as fp:
-                buf = fp.read()
-        return buf
-    except Exception as e:
-        print(e)
-        return None
+pardir = os.path.abspath(os.path.join(pwd, os.pardir))
+sys.path.append(pardir)
+from spylib.common import save_data
+reload(sys)
+sys.setdefaultencoding('utf8')
 
 
 def format_date(buf):
@@ -65,7 +54,6 @@ def format_date(buf):
         timestrp = time.strptime(realdate, "%Y-%m-%d %H:%M")
         time_stamp = int(time.mktime(timestrp))
     except Exception as e:
-        print(e)
         time_stamp = int(time.time())
     return time_stamp
 
@@ -77,16 +65,15 @@ def test_format_date():
     ftime =  format_date(buf)
 
 
+
 class BaiduTieba(object):
-    def __init__(self, username, dpath, debug=1):
+    def __init__(self, username, output='./bbsInfo', debug=1):
         self.user   =  username
         self.debug  = debug
-        self.fpath  = self._get_path(dpath)
+        self.fpath  = self._get_path(output)
         self.header = self._get_header()
         self.mySession = requests.session()
         self.portrait  = self._get_portrait()
-        self._check_portrait()
-
 
     def _get_header(self, cookie=None, para=None):
         header  = {}
@@ -101,32 +88,13 @@ class BaiduTieba(object):
             header.update(para)
         return header
 
-    def _get_path(self, dpath):
-        path = os.path.realpath(dpath)
-        mypath = os.path.join(path, self.user)
-        if not os.path.exists(mypath):
-            os.makedirs(mypath)
-        return mypath
 
-    def _save_data(self, buf, fname, ftype=None):
-        if self.debug:
-            try:
-                fullpath = os.path.join(self.fpath, fname)
-                path = os.path.split(fullpath)[0]
-                if not os.path.exists(path):
-                    os.makedirs(path)
-                if ftype == 'json':
-                    with open(fullpath, 'w') as fjp:
-                        json.dump(buf, fjp)
-                else:
-                    with open(fullpath, 'w') as fp:
-                        fp.write(buf.encode('utf-8', 'ignore'))
-                return True
-            except Exception as e:
-                # print(e)
-                return False
-        else:
-            pass
+    def _get_path(self, output):
+        path = os.path.realpath(output)
+        new_path = os.path.join(path, self.user)
+        if not os.path.exists(new_path):
+            os.makedirs(new_path)
+        return new_path
 
     def _my_request(self, url):
         try:
@@ -140,17 +108,6 @@ class BaiduTieba(object):
             print(e)
             return None
 
-    def _check_portrait(self):
-        if not self.portrait:
-            print('get portrait failed.')
-            sys.exit(1)
-        else:
-            lens = len(self.portrait)
-            if lens < 30 or lens> 32:
-                print('invalid portrait.')
-                sys.exit(1)
-        print('get portrait: '+self.portrait)
-        print('portrait len: '+str(len(self.portrait)))
 
     def _match_portrait(self, buf):
         try:
@@ -178,7 +135,9 @@ class BaiduTieba(object):
             if  not resp:
                 print("request baidu tieba main_page failed!!")
                 return None
-            self._save_data(resp, 'main_page_{}.html'.format(self.user))
+            fname = 'main_page_{}.html'.format(self.user)
+            save_data(resp, self.fpath, fname)
+
             if not resp or resp.find('portrait') == -1:
                 return None
             portrait = self._match_portrait(resp)
@@ -186,6 +145,22 @@ class BaiduTieba(object):
         except Exception as e:
             print(e)
             return None
+
+
+    def check_portrait(self):
+        if not self.portrait:
+            print('get portrait failed.')
+            return False
+        else:
+            lens = len(self.portrait)
+            if lens < 10:
+            # if lens < 30 or lens> 32:
+                print('invalid portrait.')
+                print('get portrait: '+self.portrait)
+                print('portrait len: '+str(len(self.portrait)))
+                return False
+            else:
+                return True
 
 
     def _match_dicdata(self, buf):
@@ -203,13 +178,13 @@ class BaiduTieba(object):
                 rm_len = tmp[rm_begin:].rfind('},')
                 data = tmp[:rm_begin] + tmp[rm_begin+rm_len+len('},'):]
             else:
-                print("no option")
+                # maybe the last page, last page no 'options'
                 data = tmp
             try:
                 result = eval(data)                 # if isinstance(result, dict):
                 return result
             except Exception as e:
-                print('eval failed')
+                print('eval failed.!!!!!!!!!!!!!!!!!!!!!!!')
                 print(data)
                 return None
         except Exception as e:
@@ -218,11 +193,13 @@ class BaiduTieba(object):
             return None
 
     def get_topcontent(self, buf):
-        print('get_topcontent')
+        # print('get_topcontent')
         root = etree.HTML(buf)
         data = root.xpath('//cc/div[@id]/text()')
         if not data:
-            print("not get topic content")
+            print("not get topic content.!!!!!!!!!!!!!!!!")
+            fname = 'ERROR_reqtopic_{}.html'.format(self.user)
+            save_data(buf, self.fpath, fname)
         try:
             results = ''.join(data)
             results = results.strip().replace('\/', '/')
@@ -279,7 +256,7 @@ class BaiduTieba(object):
         return feeds
 
 
-    def _get_comments(self, ttype):                      #ttype: zhuti, reply
+    def _get_comments(self, ttype, first=True):                      #ttype: zhuti, reply
         contents = []
         pg = 0
         while True:
@@ -293,7 +270,8 @@ class BaiduTieba(object):
                 values = self._match_dicdata(resp)
                 if values:
                     try:
-                        self._save_data(values.get('tplContent'), '{}Tie_{}_{}.html'.format(ttype, self.user, pg))
+                        fname = '{}Tie_{}_{}.html'.format(ttype, self.user, pg)
+                        save_data(values.get('tplContent'), self.fpath, fname)
                     except Exception as e:
                         print("save failed!!")
 
@@ -309,27 +287,47 @@ class BaiduTieba(object):
                         print(hasMore)
                         break
             else:
+                # should be continue
                 break
-        self._save_data(contents, '{ttype}_{user}.json'.format(ttype=ttype, user=self.user), ftype='json')
+
+            if not first:
+                print("Not first Fetch: {}".format(self.user))
+                print("page: "+str(pg))
+                break
+        print("isfirst: "+str(first))
+        fname = '{ttype}_{user}.json'.format(ttype=ttype, user=self.user)
+        save_data(contents, self.fpath, fname, ftype='json')
+        return contents
 
 
-    def get_topicTie(self):
+    def get_topicTie(self, isfirst):
         topic_type = 'zhuti'
-        self._get_comments(ttype=topic_type)
+        # print("I'm in get_topicTie")
+        values = self._get_comments(topic_type, isfirst)
+        return values
 
 
-    def get_replyTie(self):
+    def get_replyTie(self, isfirst):
         topic_type = 'reply'
-        self._get_comments(ttype=topic_type)
+        # print("I'm in get_replyTie")
+        values = self._get_comments(topic_type, isfirst)
+        return values
 
 
 
 def main():
     username = "muliqun7316"
-    fpath    = './output'
-    baidu = BaiduTieba(username, fpath)
-    baidu.get_topicTie()
-    # baidu.get_replyTie()
+    # output    = '../../bbsInfo'
+    # pwd = os.path.dirname(os.path.realpath(__file__))   # pwd = os.getcwd()
+    dirs = pwd.split('/')
+    output = os.path.join('/home/', dirs[2], 'bbsInfo')
+
+    baidu = BaiduTieba(username, output)
+    tryRet = baidu.check_portrait
+    if not tryRet:
+        return False
+    baidu.get_topicTie(isfirst=True)
+    # baidu.get_replyTie(isfirst=True)
 
 
 
